@@ -28,27 +28,29 @@ WS_PORT = 8001
 
 # Initialize MT5
 def find_mt5_path():
-    """Try to find MT5 installation path"""
+    """Try to find MT5 installation path using multiple methods"""
     if platform.system() != "Windows":
         return None
     
+    # Method 1: Check common installation paths
     common_paths = [
         "C:\\Program Files\\MetaTrader 5\\terminal64.exe",
         "C:\\Program Files (x86)\\MetaTrader 5\\terminal64.exe",
-        os.path.expanduser("~\\AppData\\Roaming\\MetaQuotes\\Terminal\\*\\terminal64.exe"),
+        "D:\\Program Files\\MetaTrader 5\\terminal64.exe",
+        "D:\\Program Files (x86)\\MetaTrader 5\\terminal64.exe",
+        "E:\\Program Files\\MetaTrader 5\\terminal64.exe",
+        "E:\\Program Files (x86)\\MetaTrader 5\\terminal64.exe",
     ]
     
-    # Check common paths
-    for path in common_paths[:2]:  # First two are exact paths
+    for path in common_paths:
         if os.path.exists(path):
             logger.info(f"Found MT5 at: {path}")
             return path
     
-    # Try to find in user directory
+    # Method 2: Search in user AppData directory
     try:
         user_terminal_path = os.path.expanduser("~\\AppData\\Roaming\\MetaQuotes\\Terminal")
         if os.path.exists(user_terminal_path):
-            # Look for terminal64.exe in subdirectories
             for root, dirs, files in os.walk(user_terminal_path):
                 if "terminal64.exe" in files:
                     found_path = os.path.join(root, "terminal64.exe")
@@ -56,6 +58,39 @@ def find_mt5_path():
                     return found_path
     except Exception as e:
         logger.debug(f"Error searching user directory: {e}")
+    
+    # Method 3: Search using Windows where command
+    try:
+        result = subprocess.run(
+            ["where", "terminal64.exe"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            shell=True
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            found_path = result.stdout.strip().split('\n')[0]
+            if os.path.exists(found_path):
+                logger.info(f"Found MT5 using 'where' command: {found_path}")
+                return found_path
+    except Exception as e:
+        logger.debug(f"Error using 'where' command: {e}")
+    
+    # Method 4: Search in all Program Files directories
+    try:
+        for drive in ['C:', 'D:', 'E:']:
+            program_files_paths = [
+                f"{drive}\\Program Files\\MetaTrader 5",
+                f"{drive}\\Program Files (x86)\\MetaTrader 5",
+            ]
+            for base_path in program_files_paths:
+                if os.path.exists(base_path):
+                    mt5_exe = os.path.join(base_path, "terminal64.exe")
+                    if os.path.exists(mt5_exe):
+                        logger.info(f"Found MT5 at: {mt5_exe}")
+                        return mt5_exe
+    except Exception as e:
+        logger.debug(f"Error searching Program Files: {e}")
     
     return None
 
@@ -78,38 +113,45 @@ def initialize_mt5():
     """Initialize and login to MT5"""
     logger.info("Attempting to initialize MetaTrader5...")
     
-    # First, check if MT5 is running
-    if not check_mt5_running():
-        logger.warning("MetaTrader5 Terminal does not appear to be running.")
-        logger.warning("Please start MetaTrader5 Terminal before running this server.")
-    
-    # Try to find MT5 path
+    # First, try to find MT5 installation
     mt5_path = find_mt5_path()
     
-    # Try to initialize with found path or default
-    if mt5_path:
-        logger.info(f"Attempting to initialize with path: {mt5_path}")
-        if not mt5.initialize(path=mt5_path):
-            error = mt5.last_error()
-            logger.error(f"MT5 initialization failed with explicit path: {error}")
-            # Try without path as fallback
-            logger.info("Trying default initialization...")
-            if not mt5.initialize():
-                error = mt5.last_error()
-                logger.error(f"MT5 initialization failed: {error}")
-                show_troubleshooting()
-                return False
-        else:
-            logger.info("MT5 initialized successfully with explicit path")
-    else:
-        # Try default initialization
-        logger.info("MT5 path not found, trying default initialization...")
+    if not mt5_path:
+        logger.error("=" * 60)
+        logger.error("METATRADER5 INSTALLATION NOT FOUND!")
+        logger.error("=" * 60)
+        show_troubleshooting()
+        return False
+    
+    # Check if MT5 is running
+    if not check_mt5_running():
+        logger.warning("=" * 60)
+        logger.warning("MetaTrader5 Terminal does not appear to be running.")
+        logger.warning("Please start MetaTrader5 Terminal before running this server.")
+        logger.warning("=" * 60)
+        logger.info(f"MT5 installation found at: {mt5_path}")
+        logger.info("Please:")
+        logger.info("1. Start MetaTrader5 Terminal (double-click the MT5 icon)")
+        logger.info("2. Log in with your account credentials")
+        logger.info("3. Then run this server again")
+        return False
+    
+    # Try to initialize with found path
+    logger.info(f"Attempting to initialize with path: {mt5_path}")
+    if not mt5.initialize(path=mt5_path):
+        error = mt5.last_error()
+        logger.error(f"MT5 initialization failed with explicit path: {error}")
+        # Try without path as fallback
+        logger.info("Trying default initialization...")
         if not mt5.initialize():
             error = mt5.last_error()
             logger.error(f"MT5 initialization failed: {error}")
             show_troubleshooting()
             return False
-        logger.info("MT5 initialized successfully with default path")
+        else:
+            logger.info("MT5 initialized successfully with default method")
+    else:
+        logger.info("MT5 initialized successfully with explicit path")
     
     # Login to MT5
     authorized = mt5.login(MT5_LOGIN, password=MT5_PASSWORD, server=MT5_SERVER)
@@ -146,10 +188,27 @@ def show_troubleshooting():
             "C:\\Program Files (x86)\\MetaTrader 5\\terminal64.exe",
         ]
         logger.info("Common MT5 installation paths on Windows:")
+        mt5_found = False
         for path in common_paths:
             exists = "✓ EXISTS" if os.path.exists(path) else "✗ NOT FOUND"
             logger.info(f"  - {path} [{exists}]")
-        logger.info("If MT5 is installed elsewhere, you can specify the path in initialize()")
+            if os.path.exists(path):
+                mt5_found = True
+        
+        if not mt5_found:
+            logger.error("=" * 60)
+            logger.error("METATRADER5 NOT FOUND!")
+            logger.error("=" * 60)
+            logger.info("To install MetaTrader5:")
+            logger.info("1. Download from: https://www.metatrader5.com/en/download")
+            logger.info("2. Or visit: https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe")
+            logger.info("3. Run the installer and follow the setup wizard")
+            logger.info("4. After installation, start MetaTrader5 Terminal")
+            logger.info("5. Log in with your trading account credentials")
+            logger.info("6. Then run this server again")
+            logger.error("=" * 60)
+        else:
+            logger.info("If MT5 is installed elsewhere, you can specify the path in initialize()")
 
 def get_price_data():
     """Get current price data for all symbols"""
