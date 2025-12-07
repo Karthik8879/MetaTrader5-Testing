@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 # MT5 Connection Details
 MT5_LOGIN = 221490
 MT5_PASSWORD = "Rg@12345"
-MT5_SERVER = "Augmontspot"
+MT5_SERVER = "Augmontspot-Server"
 SYMBOLS = ["XAUUSD", "XAGUSD"]
 
 # WebSocket Configuration
@@ -27,12 +27,27 @@ WS_HOST = "0.0.0.0"
 WS_PORT = 8001
 
 # Initialize MT5
+def find_mt5_installer():
+    """Check if MT5 installer exists in common download locations"""
+    installer_paths = [
+        "D:\\Downloads\\mt5setup.exe",
+        "C:\\Users\\" + os.getenv('USERNAME', '') + "\\Downloads\\mt5setup.exe",
+        os.path.expanduser("~\\Downloads\\mt5setup.exe"),
+        "C:\\Downloads\\mt5setup.exe",
+    ]
+    
+    for path in installer_paths:
+        if os.path.exists(path):
+            logger.info(f"Found MT5 installer at: {path}")
+            return path
+    return None
+
 def find_mt5_path():
     """Try to find MT5 installation path using multiple methods"""
     if platform.system() != "Windows":
         return None
     
-    # Method 1: Check common installation paths
+    # Method 1: Check common installation paths for terminal64.exe
     common_paths = [
         "C:\\Program Files\\MetaTrader 5\\terminal64.exe",
         "C:\\Program Files (x86)\\MetaTrader 5\\terminal64.exe",
@@ -117,10 +132,26 @@ def initialize_mt5():
     mt5_path = find_mt5_path()
     
     if not mt5_path:
-        logger.error("=" * 60)
-        logger.error("METATRADER5 INSTALLATION NOT FOUND!")
-        logger.error("=" * 60)
-        show_troubleshooting()
+        # Check if installer exists
+        installer_path = find_mt5_installer()
+        if installer_path:
+            logger.error("=" * 60)
+            logger.error("METATRADER5 NOT INSTALLED - INSTALLER FOUND!")
+            logger.error("=" * 60)
+            logger.info(f"Found MT5 installer at: {installer_path}")
+            logger.info("")
+            logger.info("Please install MetaTrader5 first:")
+            logger.info(f"1. Double-click: {installer_path}")
+            logger.info("2. Follow the installation wizard")
+            logger.info("3. After installation, start MetaTrader5 Terminal")
+            logger.info("4. Log in with your account credentials")
+            logger.info("5. Then run this server again")
+            logger.error("=" * 60)
+        else:
+            logger.error("=" * 60)
+            logger.error("METATRADER5 INSTALLATION NOT FOUND!")
+            logger.error("=" * 60)
+            show_troubleshooting()
         return False
     
     # Check if MT5 is running
@@ -184,6 +215,7 @@ def show_troubleshooting():
     
     if platform.system() == "Windows":
         common_paths = [
+            "D:\\Downloads\\mt5setup.exe",
             "C:\\Program Files\\MetaTrader 5\\terminal64.exe",
             "C:\\Program Files (x86)\\MetaTrader 5\\terminal64.exe",
         ]
